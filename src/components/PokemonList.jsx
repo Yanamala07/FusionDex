@@ -1,0 +1,205 @@
+import React, { useState, useEffect, useCallback } from "react";
+import {
+  getPokemonList,
+  getPokemonDetails,
+  searchPokemon,
+} from "../services/api";
+import PokemonCard from "./PokemonCard";
+import PokemonInfoSidebar from "./PokemonInfoSidebar";
+import LoadingSpinner from "./LoadingSpinner";
+import { AnimatePresence } from "framer-motion";
+import Filters from "./Filters";
+
+const PokemonList = ({ onPokemonSelect, selectedPokemon }) => {
+  const [pokemonList, setPokemonList] = useState([]);
+  const [filteredPokemonList, setFilteredPokemonList] = useState([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [offset, setOffset] = useState(0);
+  const [selectedInfo, setSelectedInfo] = useState(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [filters, setFilters] = useState({});
+  const limit = 20;
+
+  // Apply Filters
+  const applyFilters = useCallback(
+    (pokemon) => {
+      if (!Object.keys(filters).length) return true;
+
+      const { type, generation, size, ability } = filters;
+
+      if (type && !pokemon.types.some((t) => t.type.name === type))
+        return false;
+
+      if (generation) {
+        const genRanges = {
+          1: [1, 151],
+          2: [152, 251],
+          3: [252, 386],
+          4: [387, 493],
+          5: [494, 649],
+          6: [650, 721],
+          7: [722, 809],
+          8: [810, 898],
+        };
+        const [min, max] = genRanges[generation] || [];
+        if (!min || !max || pokemon.id < min || pokemon.id > max) return false;
+      }
+
+      if (size) {
+        const sizeRanges = {
+          tiny: [0, 1],
+          small: [1, 1.5],
+          medium: [1.5, 2],
+          large: [2, 3],
+          "extra large": [3, Infinity],
+        };
+        const [min, max] = sizeRanges[size] || [];
+        if (
+          !min ||
+          !max ||
+          pokemon.height / 10 < min ||
+          pokemon.height / 10 >= max
+        )
+          return false;
+      }
+
+      if (
+        ability &&
+        !pokemon.abilities.some((a) =>
+          a.ability.name.toLowerCase().includes(ability.toLowerCase())
+        )
+      )
+        return false;
+
+      return true;
+    },
+    [filters]
+  );
+
+  // Fetch Pokémon List
+  const fetchPokemonList = useCallback(async () => {
+    if (isSearching) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const data = await getPokemonList(limit, offset);
+      const newPokemon = await Promise.all(
+        data.results.map((pokemon) => getPokemonDetails(pokemon.name))
+      );
+      setPokemonList((prevList) =>
+        [...prevList, ...newPokemon].filter(
+          (v, i, self) => i === self.findIndex((p) => p.name === v.name)
+        )
+      );
+    } catch {
+      setError("Failed to fetch Pokémon list. Please try again.");
+    }
+    setIsLoading(false);
+  }, [offset, isSearching]);
+
+  useEffect(() => {
+    if (!isSearching) fetchPokemonList();
+  }, [fetchPokemonList, isSearching]);
+
+  useEffect(() => {
+    setFilteredPokemonList(pokemonList.filter(applyFilters));
+  }, [pokemonList, applyFilters]);
+
+  // Search Pokémon
+  const handleSearch = useCallback(async (term) => {
+    setSearchTerm(term);
+    if (!term.trim()) {
+      setIsSearching(false);
+      setOffset(0);
+      setPokemonList([]);
+      return;
+    }
+
+    setIsSearching(true);
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const results = await searchPokemon(term);
+      setPokemonList(results);
+    } catch {
+      setError("Error searching for Pokémon. Please try again.");
+      setPokemonList([]);
+    }
+
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => handleSearch(searchTerm), 300);
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchTerm, handleSearch]);
+
+  // Load More Pokémon
+  const loadMore = () => {
+    if (!isSearching) setOffset((prevOffset) => prevOffset + limit);
+  };
+
+  return (
+    <div className="w-full">
+      {/* Search and Filters */}
+      <div className="mb-6 flex flex-col sm:flex-row items-start space-y-4 sm:space-y-0 sm:space-x-4">
+        <div className="w-full sm:w-2/3">
+          <input
+            type="text"
+            placeholder="Search Pokémon..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+          />
+        </div>
+        <div className="w-full sm:w-1/3">
+          <Filters onFilterChange={setFilters} />
+        </div>
+      </div>
+
+      {/* Error Message */}
+      {error && <p className="text-center text-red-500 mb-4">{error}</p>}
+
+      {/* Pokémon Grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+        {filteredPokemonList.map((pokemon) => (
+          <PokemonCard
+            key={pokemon.name}
+            pokemon={pokemon}
+            onSelect={onPokemonSelect}
+            isSelected={selectedPokemon.some((p) => p.name === pokemon.name)}
+            onInfoClick={() => setSelectedInfo(pokemon)}
+          />
+        ))}
+      </div>
+
+      {/* Loading Spinner */}
+      {isLoading && <LoadingSpinner />}
+
+      {/* Load More Button */}
+      {!isLoading && !isSearching && filteredPokemonList.length > 0 && (
+        <button
+          className="mt-8 px-6 py-3 bg-indigo-500 text-white rounded-lg mx-auto block font-semibold shadow-md hover:bg-indigo-600 transition-colors"
+          onClick={loadMore}
+        >
+          Load More Pokémon
+        </button>
+      )}
+
+      {/* Pokémon Info Sidebar */}
+      <AnimatePresence>
+        {selectedInfo && (
+          <PokemonInfoSidebar
+            pokemon={selectedInfo}
+            onClose={() => setSelectedInfo(null)}
+          />
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+export default PokemonList;
