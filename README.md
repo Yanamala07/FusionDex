@@ -69,6 +69,4 @@ We welcome contributions! If you’d like to improve the project, please follow 
 - **[PokéAPI](https://pokeapi.co/)** – Providing Pokémon data.
 - **Open-source community** – For incredible tools and libraries.
 
-## 📬 Contact
-**Rahul** – [@rajanarahul93](https://github.com/rajanarahul93) – rajanarahul93@gmail.com
 
